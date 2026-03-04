@@ -35,7 +35,7 @@ class EnvConfig:
     num_bins: int = 20
     goal_threshold: float = 0.35
     collision_threshold: float = 0.4
-    time_delta: float = 0.025
+    time_delta: float = 0.1
     shuffle_on_reset: bool = True
 
     map_path: Optional[Path] = None
@@ -54,7 +54,7 @@ class SACConfig:
     target_update_interval: int = 1
     learning_rate: float = 3e-4
     train_freq: Tuple[int, str] = (1, 'step')
-    gradient_steps: int = 4
+    gradient_steps: int = 1
 
     # Network
     policy_kwargs: Dict[str, Any] = field(
@@ -71,7 +71,7 @@ class ExperimentConfig:
     env: EnvConfig = field(default_factory=EnvConfig)
     sac: SACConfig = field(default_factory=SACConfig)
 
-    total_timesteps: int = 500_000
+    total_timesteps: int = 1_000_000
     save_freq: int = 5000
     eval_freq: int = 5000
     n_eval_episodes: int = 5
