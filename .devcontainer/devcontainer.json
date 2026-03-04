@@ -3,7 +3,8 @@
 	"dockerFile": "Dockerfile",
 	"build": {
 		"args": {
-			"WORKSPACE": "${containerWorkspaceFolder}"
+			"WORKSPACE": "${containerWorkspaceFolder}",
+			"DOCKER_MIRROR": "${localEnv:MY_XY_DOMAIN_NAME:docker.io}"
 		}
 	},
 	"remoteUser": "ros",

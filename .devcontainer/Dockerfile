@@ -1,4 +1,7 @@
-FROM althack/ros2:jazzy-dev
+# DOCKER_MIRROR: 镜像加速域名，默认 docker.io（直连）
+# 使用轩辕专属域名时，由 devcontainer.json 通过 MY_XY_DOMAIN_NAME 注入
+ARG DOCKER_MIRROR=docker.io
+FROM ${DOCKER_MIRROR}/althack/ros2:jazzy-dev
 
 # ** [Optional] Uncomment this section to install additional packages. **
 #
