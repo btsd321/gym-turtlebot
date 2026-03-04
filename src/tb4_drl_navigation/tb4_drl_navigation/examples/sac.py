@@ -48,13 +48,13 @@ class SACConfig:
     # Algorithm
     policy_type: str = 'MlpPolicy'
     buffer_size: int = 1_000_000
-    batch_size: int = 256
+    batch_size: int = 1024
     gamma: float = 0.99
     tau: float = 0.005
     target_update_interval: int = 1
     learning_rate: float = 3e-4
     train_freq: Tuple[int, str] = (1, 'step')
-    gradient_steps: int = 1
+    gradient_steps: int = 4
 
     # Network
     policy_kwargs: Dict[str, Any] = field(
