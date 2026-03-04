@@ -35,7 +35,7 @@ class EnvConfig:
     num_bins: int = 20
     goal_threshold: float = 0.35
     collision_threshold: float = 0.4
-    time_delta: float = 0.1
+    time_delta: float = 0.025
     shuffle_on_reset: bool = True
 
     map_path: Optional[Path] = None
