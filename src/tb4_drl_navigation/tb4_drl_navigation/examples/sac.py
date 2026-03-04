@@ -94,7 +94,7 @@ def make_env(config: ExperimentConfig) -> gym.Env:
 
 
 class SACExperiment:
-    def __init__(self, env: gym.Env, config: ExperimentConfig):
+    def __init__(self, env: gym.Env, config: ExperimentConfig, resume_path: Optional[Path] = None):
         self.config = config
         self.env = env
 
@@ -114,14 +114,42 @@ class SACExperiment:
         self._set_seeds()
 
         sac_params = asdict(self.config.sac)
-        self.model = SAC(
-            policy=sac_params.pop('policy_type'),
-            env=self.env,
-            **sac_params,
-            verbose=1,
-            tensorboard_log=str(self.experiment_path / 'logs'),
-            device='auto',
-        )
+        if resume_path is not None:
+            resume_path = Path(resume_path)
+            print(f'Resuming from checkpoint: {resume_path}')
+            self.model = SAC.load(
+                resume_path,
+                env=self.env,
+                verbose=1,
+                tensorboard_log=str(self.experiment_path / 'logs'),
+                device='auto',
+            )
+            # Parse already-completed steps from filename, e.g. sac_model_40000_steps.zip
+            stem = resume_path.stem  # e.g. 'sac_model_40000_steps'
+            parts = stem.split('_')
+            try:
+                self._resume_steps = int(parts[-2])  # second-to-last token is the step number
+            except (ValueError, IndexError):
+                self._resume_steps = 0
+            # Load replay buffer if it exists alongside the checkpoint
+            replay_buffer_path = resume_path.parent / f'{stem}_replay_buffer.pkl'
+            if replay_buffer_path.exists():
+                print(f'Loading replay buffer: {replay_buffer_path}')
+                self.model.load_replay_buffer(str(replay_buffer_path))
+                print(f'Replay buffer loaded: {self.model.replay_buffer.size()} transitions')
+            else:
+                print(f'No replay buffer found at {replay_buffer_path}, starting with empty buffer')
+        else:
+            self._resume_steps = 0
+            policy_type = sac_params.pop('policy_type')
+            self.model = SAC(
+                policy=policy_type,
+                env=self.env,
+                **sac_params,
+                verbose=1,
+                tensorboard_log=str(self.experiment_path / 'logs'),
+                device='auto',
+            )
 
         print(self.model.policy)
 
@@ -140,7 +168,8 @@ class SACExperiment:
             CheckpointCallback(
                 save_freq=self.config.save_freq,
                 save_path=str(self.checkpoints_path),
-                name_prefix='sac_model'
+                name_prefix='sac_model',
+                save_replay_buffer=True,
             ),
             EvalCallback(
                 eval_env=self.env,
@@ -153,18 +182,24 @@ class SACExperiment:
         ]
 
     def train(self):
+        remaining_steps = self.config.total_timesteps - self._resume_steps
+        reset_num_timesteps = self._resume_steps == 0
+        print(f'Training for {remaining_steps} more steps '
+              f'(already completed: {self._resume_steps})')
         try:
             self.model.learn(
-                total_timesteps=self.config.total_timesteps,
+                total_timesteps=remaining_steps,
                 callback=self._get_callbacks(),
                 log_interval=25,
                 progress_bar=True,
-                tb_log_name='sac_training'
+                tb_log_name='sac_training',
+                reset_num_timesteps=reset_num_timesteps,
             )
         except KeyboardInterrupt:
             pass
         finally:
             self.model.save(self.final_model)
+            self.model.save_replay_buffer(str(self.final_model) + '_replay_buffer')
             config_path = self.experiment_path / 'config.yaml'
             with open(config_path, 'w') as f:
                 yaml.dump(asdict(self.config), f, sort_keys=False)
@@ -202,6 +237,10 @@ def main():
 
     train_parser = subparsers.add_parser('train')
     train_parser.add_argument('--config', type=Path, help='Path to config file')
+    train_parser.add_argument(
+        '--resume', type=Path, default=None,
+        help='Path to a checkpoint .zip to resume training from'
+    )
 
     eval_parser = subparsers.add_parser('eval')
     eval_parser.add_argument('model_path', type=Path)
@@ -213,7 +252,8 @@ def main():
 
     env = make_env(config=config)
     if args.command == 'train':
-        experiment = SACExperiment(env=env, config=config)
+        resume_path = args.resume if args.command == 'train' else None
+        experiment = SACExperiment(env=env, config=config, resume_path=resume_path)
         experiment.train()
     elif args.command == 'eval':
         args.model_path = args.model_path or (
