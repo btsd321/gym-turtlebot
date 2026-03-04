@@ -71,7 +71,7 @@ class ExperimentConfig:
     env: EnvConfig = field(default_factory=EnvConfig)
     sac: SACConfig = field(default_factory=SACConfig)
 
-    total_timesteps: int = 1_000_000
+    total_timesteps: int = 500_000
     save_freq: int = 5000
     eval_freq: int = 5000
     n_eval_episodes: int = 5
