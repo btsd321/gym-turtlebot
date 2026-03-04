@@ -30,6 +30,10 @@ ENV DEBIAN_FRONTEND=dialog
 # Set the env variable to allow rosdep installation of pip packages
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
+# 切换 pip 源为清华大学镜像
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+    && pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn
+
 # Set up auto-source of workspace for ros user
 ARG WORKSPACE
 RUN echo "if [ -f ${WORKSPACE}/install/setup.bash ]; then source ${WORKSPACE}/install/setup.bash; fi" >> /home/ros/.bashrc
