@@ -8,6 +8,9 @@
 		}
 	},
 	"remoteUser": "ros",
+	"mounts": [
+		"source=${localEnv:HOME}/.ssh,target=/home/ros/.ssh,type=bind,consistency=cached,readonly"
+	],
 	"runArgs": [
 		"--network=host",
 		"--cap-add=SYS_PTRACE",
