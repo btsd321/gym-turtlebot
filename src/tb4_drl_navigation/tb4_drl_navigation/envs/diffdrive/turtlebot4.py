@@ -360,7 +360,9 @@ class Turtlebot4Env(gym.Env):
         reward = self._get_reward(
             action=action,
             min_ranges=observation['min_ranges'],
-            dist_to_goal=observation['dist_to_goal']
+            min_ranges_angle=observation['min_ranges_angle'],
+            dist_to_goal=observation['dist_to_goal'],
+            orient_to_goal=observation['orient_to_goal']
         )
 
         if debug:
@@ -477,18 +479,59 @@ class Turtlebot4Env(gym.Env):
             self,
             action: np.ndarray,
             min_ranges: np.ndarray,
-            dist_to_goal: float
+            min_ranges_angle: np.ndarray,
+            dist_to_goal: float,
+            orient_to_goal: float
     ) -> float:
+        """
+        @brief 计算当前时间步的奖励值。
+
+        奖励由以下四个部分构成：
+
+        | 情形                        | 奖励值                                                       |
+        |-----------------------------|--------------------------------------------------------------|
+        | 到达目标                    | +100                                                         |
+        | 发生碰撞（全角度检测）       | -100                                                         |
+        | 障碍物惩罚（仅前向扇区）     | (min_front_range - 1) / 2 * |cos(angle)|，距离 < 1.0 m 时   |
+        | 动作奖励                    | linear * cos(orient_to_goal) / 2 - |angular| / 2 - 0.001    |
+
+        @note 动作奖励使用 linear * cos(orient_to_goal) 替代纯线速度奖励，
+              仅当朝向目标运动时才给予正奖励，背离目标时为负奖励。
+              障碍物惩罚按速度方向与最近障碍连线夹角加权（|cos(angle)|），
+              垂直穿过障碍时（如从两柱间穿过）惩罚消失。
+              碰撞终止检测仍使用全角度读数。
+
+        @param action          当前执行的动作，形如 [linear_vel, angular_vel]。
+        @param min_ranges      各激光扇区的最近距离读数，shape=(num_bins,)。
+        @param min_ranges_angle 各扇区最近读数对应的方位角（弧度），shape=(num_bins,)。
+        @param dist_to_goal    机器人到目标的欧氏距离（米）。
+        @param orient_to_goal  机器人前进方向与目标方向的夹角（弧度，范围 [-π, π]）。
+        @return 当前时间步的标量奖励值（float）。
+        """
         if self._goal_reached(dist_to_goal=dist_to_goal):
             return 100.0
         if self._collision(min_ranges=min_ranges):
             return -100.0
 
-        # Obstacle reward
-        obstacle_reward = (min(min_ranges) - 1)/2 if min(min_ranges) < 1.0 else 0.0
+        # 仅考虑前向扇区（|angle| <= pi/2）的障碍物惩罚，忽略身后障碍
+        front_mask = np.abs(min_ranges_angle) <= math.pi / 2
+        front_ranges = min_ranges[front_mask] if front_mask.any() else min_ranges
+        front_angles = min_ranges_angle[front_mask] if front_mask.any() else min_ranges_angle
 
-        # Action reward
-        action_reward = action[0]/2 - abs(action[1])/2 - 0.001
+        # 障碍物惩罚：按速度方向与最近障碍物连线的夹角加权
+        # 权重 = |cos(angle)|：正前方（angle=0）权重最大，垂直（angle=±π/2）权重为 0
+        # 这样小车横穿两柱之间时（障碍垂直于运动方向）不受惩罚
+        if min(front_ranges) < 1.0:
+            nearest_idx = int(np.argmin(front_ranges))
+            nearest_angle = float(front_angles[nearest_idx])
+            cos_weight = abs(math.cos(nearest_angle))
+            obstacle_reward = (min(front_ranges) - 1) / 2 * cos_weight
+        else:
+            obstacle_reward = 0.0
+
+        # 动作奖励：鼓励朝向目标运动，惩罚大幅转向，并施加微小时间惩罚
+        # cos(orient_to_goal)：朝向目标时为正，背离目标时为负
+        action_reward = action[0] * math.cos(float(np.asarray(orient_to_goal).flat[0])) / 2 - abs(action[1]) / 2 - 0.001
 
         return obstacle_reward + action_reward
 
@@ -497,7 +540,7 @@ class Turtlebot4Env(gym.Env):
             return True
         return False
 
-    def _collision(self, min_ranges) -> bool:
+    def _collision(self, min_ranges: np.ndarray) -> bool:
         if min(min_ranges) < self.collision_threshold:
             return True
         return False
