@@ -509,7 +509,7 @@ class Turtlebot4Env(gym.Env):
         @return 当前时间步的标量奖励值（float）。
         """
         if self._goal_reached(dist_to_goal=dist_to_goal):
-            return 100.0
+            return 200.0
         if self._collision(min_ranges=min_ranges):
             return -100.0
 
