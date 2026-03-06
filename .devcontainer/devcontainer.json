@@ -35,8 +35,6 @@
 		"LIBGL_ALWAYS_SOFTWARE": "0",
 		"NVIDIA_VISIBLE_DEVICES": "all",
 		"NVIDIA_DRIVER_CAPABILITIES": "all",
-		// WSL2 的 NVIDIA 用户态库在 /usr/lib/wsl/lib，确保 libEGL_nvidia.so.0 可被动态链接器找到
-		"LD_LIBRARY_PATH": "/usr/lib/wsl/lib",
 		// 固定 XDG_RUNTIME_DIR 到容器内可写目录，避免 /run/user/1001 Permission denied
 		// 导致 Qt/Wayland/EGL 初始化异常
 		"XDG_RUNTIME_DIR": "/tmp/runtime-ros",

@@ -93,7 +93,7 @@ def generate_launch_description():
 
     declare_headless_cmd = DeclareLaunchArgument(
         'headless',
-        default_value='False',
+        default_value='True',
         description='Run the simulation in headless mode.',
         choices=['True', 'False'],
     )
