@@ -40,6 +40,10 @@ RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple \
 ARG WORKSPACE
 RUN echo "if [ -f ${WORKSPACE}/install/setup.bash ]; then source ${WORKSPACE}/install/setup.bash; fi" >> /home/ros/.bashrc
 
+# 将 ros 用户加入 video/render 组，使容器内用户可访问 /dev/dri/* 设备
+# （Ogre2/GL3Plus 渲染引擎需要 renderD* 和 card* 读写权限）
+RUN groupadd -f render && usermod -aG video,render ros
+
 # 当 SSH X11 转发时动态修正 DISPLAY：
 # 若容器内 DISPLAY 无效，自动查找 /tmp/.X11-unix 下可用的 socket
 RUN echo '\n# Auto-detect valid DISPLAY for remote SSH X11 forwarding\nif [ -z "$DISPLAY" ] || ! xdpyinfo >/dev/null 2>&1; then\n  for _sock in /tmp/.X11-unix/X*; do\n    _n="${_sock##*X}"\n    if xdpyinfo -display ":${_n}" >/dev/null 2>&1; then\n      export DISPLAY=":${_n}"\n      break\n    fi\n  done\nfi' >> /home/ros/.bashrc

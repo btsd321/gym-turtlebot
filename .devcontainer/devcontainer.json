@@ -22,25 +22,47 @@
 		"--volume=/mnt/wslg:/mnt/wslg",
 		"--ipc=host",
 		"--gpus=all",
-		// uncomment to use intel iGPU
-		// "--device=/dev/dri"
+		// Required for Ogre2/GL3Plus rendering (Gazebo, RViz2) regardless of GPU vendor
+		"--device=/dev/dri",
+		// 运行时补充 GID，使 ros 用户实际获得宿主机 render/video 组的 DRI 访问权
+		"--group-add=video",
+		"--group-add=render"
 	],
 	"containerEnv": {
 		"DISPLAY": "${localEnv:DISPLAY}", // Needed for GUI try ":0" for windows
 		"WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
-		"XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
 		"PULSE_SERVER": "${localEnv:PULSE_SERVER}",
 		"LIBGL_ALWAYS_SOFTWARE": "0",
 		"NVIDIA_VISIBLE_DEVICES": "all",
 		"NVIDIA_DRIVER_CAPABILITIES": "all",
+		// WSL2 的 NVIDIA 用户态库在 /usr/lib/wsl/lib，确保 libEGL_nvidia.so.0 可被动态链接器找到
+		"LD_LIBRARY_PATH": "/usr/lib/wsl/lib",
+		// 固定 XDG_RUNTIME_DIR 到容器内可写目录，避免 /run/user/1001 Permission denied
+		// 导致 Qt/Wayland/EGL 初始化异常
+		"XDG_RUNTIME_DIR": "/tmp/runtime-ros",
 		// 指向挂载进容器的 Xauthority 文件
 		"XAUTHORITY": "/home/ros/.Xauthority",
 		// 禁用 FastDDS SHM 传输，避免容器重启后残留的 /dev/shm/fastrtps_* 段
 		// 导致 RCL 上下文初始化失败（rviz2 SIGABRT）
-		"FASTRTPS_DEFAULT_PROFILES_FILE": "/workspaces/gym-turtlebot/.devcontainer/fastdds_no_shm.xml"
+		"FASTRTPS_DEFAULT_PROFILES_FILE": "/workspaces/gym-turtlebot/.devcontainer/fastdds_no_shm.xml",
+		// 宿主机代理（--network=host 下 127.0.0.1 即宿主机），供 Copilot/Claude 等插件使用
+		"HTTP_PROXY": "http://127.0.0.1:7897",
+		"HTTPS_PROXY": "http://127.0.0.1:7897",
+		"http_proxy": "http://127.0.0.1:7897",
+		"https_proxy": "http://127.0.0.1:7897",
+		// ROS/Gazebo 本地通信不走代理
+		"NO_PROXY": "localhost,127.0.0.0/8,::1",
+		"no_proxy": "localhost,127.0.0.0/8,::1"
 	},
-	// 容器启动后允许本地无鉴权 X 连接；同时清理残留 FastDDS SHM 段
-	"postStartCommand": "xhost +local: 2>/dev/null || true && rm -f /dev/shm/fastrtps_* 2>/dev/null || true",
+	// 容器启动后：
+	// 1. 修复 /dev/dri/* 权限（GID 不匹配导致 libEGL Permission denied → Ogre2 segfault）
+	// 2. 修复 XDG_RUNTIME_DIR（Qt/EGL 需要可写的 runtime dir）
+	// 3. 创建 NVIDIA EGL GLVND ICD：nvidia-container-toolkit 注入了 libEGL_nvidia.so.0，
+	//    但容器内缺少对应的 ICD JSON，导致 GLVND 不知道去调用 NVIDIA 专有 EGL，
+	//    Mesa 回退 DRI2 路径失败（driver (null)）→ Ogre2 传感器线程 segfault
+	// 4. 允许本地无鉴权 X 连接
+	// 5. 清理残留 FastDDS SHM 段
+	"postStartCommand": "sudo chmod a+rw /dev/dri/* 2>/dev/null || true && mkdir -p /tmp/runtime-ros && chmod 700 /tmp/runtime-ros && sudo mkdir -p /usr/share/glvnd/egl_vendor.d && (test -f /usr/share/glvnd/egl_vendor.d/10_nvidia.json || printf '{\"file_format_version\":\"1.0.0\",\"ICD\":{\"library_path\":\"libEGL_nvidia.so.0\"}}' | sudo tee /usr/share/glvnd/egl_vendor.d/10_nvidia.json >/dev/null) 2>/dev/null || true && xhost +local: 2>/dev/null || true && rm -f /dev/shm/fastrtps_* 2>/dev/null || true",
 	// Set *default* container specific settings.json values on container create.
 	"customizations": {
 		"vscode": {
