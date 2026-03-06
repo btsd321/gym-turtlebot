@@ -34,10 +34,13 @@
 		"NVIDIA_VISIBLE_DEVICES": "all",
 		"NVIDIA_DRIVER_CAPABILITIES": "all",
 		// 指向挂载进容器的 Xauthority 文件
-		"XAUTHORITY": "/home/ros/.Xauthority"
+		"XAUTHORITY": "/home/ros/.Xauthority",
+		// 禁用 FastDDS SHM 传输，避免容器重启后残留的 /dev/shm/fastrtps_* 段
+		// 导致 RCL 上下文初始化失败（rviz2 SIGABRT）
+		"FASTRTPS_DEFAULT_PROFILES_FILE": "/workspaces/gym-turtlebot/.devcontainer/fastdds_no_shm.xml"
 	},
-	// 容器启动后允许本地无鉴权 X 连接，方便调试；同时打印提示
-	"postStartCommand": "xhost +local: 2>/dev/null || true",
+	// 容器启动后允许本地无鉴权 X 连接；同时清理残留 FastDDS SHM 段
+	"postStartCommand": "xhost +local: 2>/dev/null || true && rm -f /dev/shm/fastrtps_* 2>/dev/null || true",
 	// Set *default* container specific settings.json values on container create.
 	"customizations": {
 		"vscode": {
