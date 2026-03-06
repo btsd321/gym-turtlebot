@@ -9,7 +9,9 @@
 	},
 	"remoteUser": "ros",
 	"mounts": [
-		"source=${localEnv:HOME}/.ssh,target=/home/ros/.ssh,type=bind,consistency=cached,readonly"
+		"source=${localEnv:HOME}/.ssh,target=/home/ros/.ssh,type=bind,consistency=cached,readonly",
+		// 将宿主机的 X11 认证文件挂载进容器，使 SSH X11 转发的 cookie 可用
+		"source=${localEnv:HOME}/.Xauthority,target=/home/ros/.Xauthority,type=bind,consistency=cached"
 	],
 	"runArgs": [
 		"--network=host",
@@ -30,8 +32,12 @@
 		"PULSE_SERVER": "${localEnv:PULSE_SERVER}",
 		"LIBGL_ALWAYS_SOFTWARE": "0",
 		"NVIDIA_VISIBLE_DEVICES": "all",
-		"NVIDIA_DRIVER_CAPABILITIES": "all"
+		"NVIDIA_DRIVER_CAPABILITIES": "all",
+		// 指向挂载进容器的 Xauthority 文件
+		"XAUTHORITY": "/home/ros/.Xauthority"
 	},
+	// 容器启动后允许本地无鉴权 X 连接，方便调试；同时打印提示
+	"postStartCommand": "xhost +local: 2>/dev/null || true",
 	// Set *default* container specific settings.json values on container create.
 	"customizations": {
 		"vscode": {
