@@ -147,6 +147,71 @@ Remove-NetFirewallRule -DisplayName "LightningX Proxy for Docker"
 
 ---
 
+## GUI 窗口转发（rviz2 / Gazebo）
+
+### 环境说明
+
+- Windows Docker Desktop（WSL2 后端）容器内无法直接使用 WSLg
+- 使用 **MobaXterm** 的内置 X Server 将 GUI 转发到 Windows 桌面
+
+### 常见误区
+
+#### ❌ 使用 `resolv.conf` 中的 nameserver IP 作为 DISPLAY
+
+`/etc/resolv.conf` 中的 `nameserver 192.168.65.7` 是 Docker Desktop 的 **DNS 服务器**，不是 Windows 宿主机 IP，无法用于 X11 连接。
+
+#### ✅ 正确：使用 `host.docker.internal`
+
+`host.docker.internal` 解析为 `192.168.65.254`，这才是容器访问 Windows 宿主机的正确地址。
+
+### 部署步骤
+
+#### 第一步：安装并配置 MobaXterm
+
+1. 下载安装 [MobaXterm](https://mobaxterm.mobatek.net/download.html)（Home Edition 免费）
+2. 打开 MobaXterm，菜单 **Settings → X11** 选项卡
+3. 将 **X11 remote access** 改为 **full**
+4. 重启 X Server（托盘图标右键 → Restart X server）
+
+#### 第二步：Windows 防火墙放行端口 6000
+
+在 **PowerShell（管理员）** 中运行：
+
+```powershell
+New-NetFirewallRule -DisplayName "MobaXterm X11" -Direction Inbound -Protocol TCP -LocalPort 6000-6010 -Action Allow
+```
+
+#### 第三步：验证 X Server 正在监听
+
+```powershell
+netstat -an | findstr ":6000"
+# 应看到 0.0.0.0:6000 LISTENING
+```
+
+#### 第四步：容器内验证连通性
+
+```bash
+timeout 3 bash -c "echo >/dev/tcp/192.168.65.254/6000" && echo "OK" || echo "REFUSED"
+```
+
+#### 第五步：运行 GUI 程序
+
+```bash
+export DISPLAY=host.docker.internal:0.0
+export LIBGL_ALWAYS_SOFTWARE=1   # MobaXterm 不支持硬件 OpenGL，必须软件渲染
+rviz2
+```
+
+`devcontainer.json` 中已配置上述两个环境变量，Rebuild Container 后自动生效，无需每次手动 export。
+
+### 注意事项
+
+- **每次启动 Windows 后**需确认 MobaXterm X Server 已运行（托盘有 X 图标）
+- `LIBGL_ALWAYS_SOFTWARE=1` 会使用 CPU 软件渲染，对 rviz2 够用，但 Gazebo 3D 仿真性能较低
+- 如需更好的 3D 性能，可考虑从 WSL2 Ubuntu 发行版中直接使用 WSLg
+
+---
+
 ## 注意事项
 
 1. **LightningX 端口可能每次启动变化**，重启后需重新确认端口号（`Get-NetTCPConnection`），如有变化需更新 portproxy 规则和 `devcontainer.json` 中的 `containerEnv` 并 Rebuild Container

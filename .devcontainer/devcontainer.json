@@ -32,10 +32,14 @@
 		"--group-add=render"
 	],
 	"containerEnv": {
-		"DISPLAY": "${localEnv:DISPLAY}", // Needed for GUI try ":0" for windows
+		// Windows Docker Desktop 宿主机固定 IP 为 host.docker.internal (192.168.65.254)
+		// 需在 Windows 上启动 MobaXterm 并将 X11 remote access 设为 full
+		// 注意：resolv.conf 中的 nameserver (192.168.65.7) 仅为 DNS，不是宿主机 IP
+		"DISPLAY": "host.docker.internal:0.0",
 		"WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
 		"PULSE_SERVER": "${localEnv:PULSE_SERVER}",
-		"LIBGL_ALWAYS_SOFTWARE": "0",
+		// MobaXterm X Server 不支持硬件 OpenGL 直通，必须使用 Mesa 软件渲染
+		"LIBGL_ALWAYS_SOFTWARE": "1",
 		"NVIDIA_VISIBLE_DEVICES": "all",
 		"NVIDIA_DRIVER_CAPABILITIES": "all",
 		// 固定 XDG_RUNTIME_DIR 到容器内可写目录，避免 /run/user/1001 Permission denied
