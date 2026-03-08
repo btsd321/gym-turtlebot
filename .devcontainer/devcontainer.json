@@ -46,11 +46,15 @@
 		// 禁用 FastDDS SHM 传输，避免容器重启后残留的 /dev/shm/fastrtps_* 段
 		// 导致 RCL 上下文初始化失败（rviz2 SIGABRT）
 		"FASTRTPS_DEFAULT_PROFILES_FILE": "/workspaces/gym-turtlebot/.devcontainer/fastdds_no_shm.xml",
-		// VS Code 插件（Copilot/Claude 等）走静态代理；终端 shell 会话由 /etc/profile.d/99-proxy.sh 覆盖为动态网关地址
-		"HTTP_PROXY": "http://127.0.0.1:19828",
-		"HTTPS_PROXY": "http://127.0.0.1:19828",
-		"http_proxy": "http://127.0.0.1:19828",
-		"https_proxy": "http://127.0.0.1:19828",
+		// VS Code 插件（Copilot/Claude 等）走静态代理，使用 Docker bridge 网关 172.18.0.1
+		// 需在 Windows 管理员 PowerShell 配置 netsh portproxy（重启后保留）：
+		//   netsh interface portproxy add v4tov4 listenaddress=172.18.0.1 listenport=19828 connectaddress=127.0.0.1 connectport=19828
+		// 不能用 127.0.0.1（容器内是 WSL2 VM loopback，连不到 Windows 代理）
+		// 终端 shell 会话由 /etc/profile.d/99-proxy.sh 动态覆盖为实际网关地址
+		"HTTP_PROXY": "http://172.18.0.1:19828",
+		"HTTPS_PROXY": "http://172.18.0.1:19828",
+		"http_proxy": "http://172.18.0.1:19828",
+		"https_proxy": "http://172.18.0.1:19828",
 		// ROS/Gazebo 本地通信不走代理
 		"NO_PROXY": "localhost,127.0.0.0/8,::1",
 		"no_proxy": "localhost,127.0.0.0/8,::1"
