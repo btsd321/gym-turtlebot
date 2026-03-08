@@ -132,7 +132,12 @@ class SACExperiment:
             except (ValueError, IndexError):
                 self._resume_steps = 0
             # Load replay buffer if it exists alongside the checkpoint
-            replay_buffer_path = resume_path.parent / f'{stem}_replay_buffer.pkl'
+            # CheckpointCallback saves replay buffer as: sac_model_replay_buffer_{step}_steps.pkl
+            # Reconstruct by replacing the prefix 'sac_model' with 'sac_model_replay_buffer'
+            # stem example: 'sac_model_15000_steps' -> 'sac_model_replay_buffer_15000_steps'
+            name_prefix = 'sac_model'
+            suffix = stem[len(name_prefix):]  # '_15000_steps'
+            replay_buffer_path = resume_path.parent / f'{name_prefix}_replay_buffer{suffix}.pkl'
             if replay_buffer_path.exists():
                 print(f'Loading replay buffer: {replay_buffer_path}')
                 self.model.load_replay_buffer(str(replay_buffer_path))
