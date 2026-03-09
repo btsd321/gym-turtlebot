@@ -124,18 +124,15 @@ class SACExperiment:
                 tensorboard_log=str(self.experiment_path / 'logs'),
                 device='auto',
             )
-            # Parse already-completed steps from filename, e.g. sac_model_40000_steps.zip
-            stem = resume_path.stem  # e.g. 'sac_model_40000_steps'
-            parts = stem.split('_')
-            try:
-                self._resume_steps = int(parts[-2])  # second-to-last token is the step number
-            except (ValueError, IndexError):
-                self._resume_steps = 0
+            # Use the step count already stored inside the checkpoint (more reliable
+            # than parsing the filename, which breaks if the naming convention changes).
+            self._resume_steps = self.model.num_timesteps
             # Load replay buffer if it exists alongside the checkpoint
             # CheckpointCallback saves replay buffer as: sac_model_replay_buffer_{step}_steps.pkl
             # Reconstruct by replacing the prefix 'sac_model' with 'sac_model_replay_buffer'
             # stem example: 'sac_model_15000_steps' -> 'sac_model_replay_buffer_15000_steps'
             name_prefix = 'sac_model'
+            stem = resume_path.stem
             suffix = stem[len(name_prefix):]  # '_15000_steps'
             replay_buffer_path = resume_path.parent / f'{name_prefix}_replay_buffer{suffix}.pkl'
             if replay_buffer_path.exists():
@@ -180,7 +177,7 @@ class SACExperiment:
                 eval_env=self.env,
                 best_model_save_path=str(self.best_model_path),
                 log_path=str(self.eval_logs_path),
-                eval_freq=self.config.save_freq,
+                eval_freq=self.config.eval_freq,
                 n_eval_episodes=self.config.n_eval_episodes,
                 deterministic=True
             )
@@ -188,6 +185,11 @@ class SACExperiment:
 
     def train(self):
         remaining_steps = self.config.total_timesteps - self._resume_steps
+        if remaining_steps <= 0:
+            print(f'Checkpoint already reached or exceeded total_timesteps '
+                  f'({self._resume_steps} >= {self.config.total_timesteps}). Nothing to train.')
+            self.env.close()
+            return
         reset_num_timesteps = self._resume_steps == 0
         print(f'Training for {remaining_steps} more steps '
               f'(already completed: {self._resume_steps})')
@@ -253,12 +255,18 @@ def main():
 
     args = parser.parse_args()
 
-    config = ExperimentConfig()
+    if args.command == 'train' and args.config is not None:
+        with open(args.config, 'r') as f:
+            raw = yaml.unsafe_load(f)
+        env_cfg = EnvConfig(**raw.pop('env'))
+        sac_cfg = SACConfig(**raw.pop('sac'))
+        config = ExperimentConfig(env=env_cfg, sac=sac_cfg, **raw)
+    else:
+        config = ExperimentConfig()
 
     env = make_env(config=config)
     if args.command == 'train':
-        resume_path = args.resume if args.command == 'train' else None
-        experiment = SACExperiment(env=env, config=config, resume_path=resume_path)
+        experiment = SACExperiment(env=env, config=config, resume_path=args.resume)
         experiment.train()
     elif args.command == 'eval':
         args.model_path = args.model_path or (

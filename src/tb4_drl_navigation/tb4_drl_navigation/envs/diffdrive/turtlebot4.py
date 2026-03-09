@@ -533,7 +533,16 @@ class Turtlebot4Env(gym.Env):
         # cos(orient_to_goal)：朝向目标时为正，背离目标时为负
         action_reward = action[0] * math.cos(float(np.asarray(orient_to_goal).flat[0])) / 2 - abs(action[1]) / 2 - 0.001
 
-        return obstacle_reward + action_reward
+        total_reward = obstacle_reward + action_reward
+        print(
+            f'[reward] dist={float(np.asarray(dist_to_goal).flat[0]):.3f}m  '
+            f'orient={float(np.asarray(orient_to_goal).flat[0]):.3f}rad  '
+            f'lin={action[0]:.3f}  ang={action[1]:.3f}  '
+            f'min_front={min(front_ranges):.3f}m  '
+            f'obs_r={obstacle_reward:.4f}  act_r={action_reward:.4f}  '
+            f'total={total_reward:.4f}'
+        )
+        return total_reward
 
     def _goal_reached(self, dist_to_goal: float) -> bool:
         if dist_to_goal < self.goal_threshold:
