@@ -192,6 +192,7 @@ class Turtlebot4Env(gym.Env):
         self.observation_space = self._build_observation_space()
 
         self._last_action = np.zeros(self.action_space.shape, dtype=np.float32)
+        self._prev_dist_to_goal: float = 0.0
 
         self._goal_pose: Optional[Pose] = None
         self._start_pose: Optional[Pose] = None
@@ -433,6 +434,7 @@ class Turtlebot4Env(gym.Env):
             )
 
         observation, info = self._propagate_state(time_delta=self.time_delta)
+        self._prev_dist_to_goal = observation['dist_to_goal'].item()
 
         if options.get('debug'):
             self.ros_gz_pub.publish_observation(
@@ -448,9 +450,17 @@ class Turtlebot4Env(gym.Env):
     def _propagate_state(self, time_delta: float = 0.2) -> Tuple[Dict]:
         self.simulation_control.pause_unpause(pause=False)
 
+        # 每隔 check_interval 秒检查一次终止条件，避免机器人经过目标/碰撞点后又离开而漏检
+        check_interval = min(0.05, time_delta)
         end_time = time.time() + time_delta
         while time.time() < end_time:
-            self.executor.spin_once(timeout_sec=max(0, end_time - time.time()))
+            next_check = min(time.time() + check_interval, end_time)
+            while time.time() < next_check:
+                self.executor.spin_once(timeout_sec=max(0, next_check - time.time()))
+            obs_tmp = self._get_obs()
+            if (self._goal_reached(dist_to_goal=obs_tmp['dist_to_goal'].item()) or
+                    self._collision(min_ranges=obs_tmp['min_ranges'])):
+                break
 
         self.simulation_control.pause_unpause(pause=True)
 
@@ -508,7 +518,9 @@ class Turtlebot4Env(gym.Env):
         @param orient_to_goal  机器人前进方向与目标方向的夹角（弧度，范围 [-π, π]）。
         @return 当前时间步的标量奖励值（float）。
         """
-        if self._goal_reached(dist_to_goal=dist_to_goal):
+        dist_to_goal_scalar = float(np.asarray(dist_to_goal).flat[0])
+        if self._goal_reached(dist_to_goal=dist_to_goal_scalar):
+            self._prev_dist_to_goal = dist_to_goal_scalar
             return 200.0
         if self._collision(min_ranges=min_ranges):
             return -100.0
@@ -525,22 +537,39 @@ class Turtlebot4Env(gym.Env):
             nearest_idx = int(np.argmin(front_ranges))
             nearest_angle = float(front_angles[nearest_idx])
             cos_weight = abs(math.cos(nearest_angle))
-            obstacle_reward = (min(front_ranges) - 1) / 2 * cos_weight
+            obstacle_reward = 2 * (min(front_ranges) - 1) / 2 * cos_weight
         else:
             obstacle_reward = 0.0
 
-        # 动作奖励：鼓励朝向目标运动，惩罚大幅转向，并施加微小时间惩罚
-        # cos(orient_to_goal)：朝向目标时为正，背离目标时为负
-        action_reward = action[0] * math.cos(float(np.asarray(orient_to_goal).flat[0])) / 2 - abs(action[1]) / 2 - 0.001
+        # 动作奖励：
+        # action[0]：线速度分量，乘以 cos(orient_to_goal) 以确保仅朝向目标运动时才有正奖励，背离目标时为负奖励
+        # action[1]：角速度分量，绝对值越大惩罚越多，鼓励更平滑的转向
+        # - 线速度分量：仅朝向目标（orient < π/2）时给正奖励，背对目标时为 0
+        #   用 max(0, cos(orient)) 代替纯 lin/2，防止背对目标高速行驶仍得正分
+        # - 朝向惩罚：朝向偏差越大扣分越多，引导转向目标
+        #   使用 (|orient| / π) 归一化，orient=0 无惩罚，orient=±π 最大惩罚 -0.5
+        # - 角速度惩罚：抑制过度旋转
+        # - 时间惩罚：每步 -0.001 鼓励尽快到达
+        orient_scalar = float(np.asarray(orient_to_goal).flat[0])
+        action_reward = (action[0] * max(0.0, math.cos(orient_scalar)) / 2
+                         - abs(orient_scalar) / math.pi * 0.5 / (0.5 + dist_to_goal_scalar)
+                         - abs(action[1]) / 16
+                         - 0.01
+                         )
 
-        total_reward = obstacle_reward + action_reward
+        # 势函数塑形：靠近目标时给正奖励，远离目标时给负奖励
+        # 系数 5.0：让距离信号主导，确保"靠近目标"始终比其他项更有吸引力
+        shaping_reward = (self._prev_dist_to_goal - dist_to_goal_scalar) * 2.0
+        self._prev_dist_to_goal = dist_to_goal_scalar
+
+        total_reward = obstacle_reward + action_reward + shaping_reward
         print(
-            f'[reward] dist={float(np.asarray(dist_to_goal).flat[0]):.3f}m  '
-            f'orient={float(np.asarray(orient_to_goal).flat[0]):.3f}rad  '
+            f'[reward] dist={dist_to_goal_scalar:.3f}m  '
+            f'orient={orient_scalar:.3f}rad  '
             f'lin={action[0]:.3f}  ang={action[1]:.3f}  '
             f'min_front={min(front_ranges):.3f}m  '
             f'obs_r={obstacle_reward:.4f}  act_r={action_reward:.4f}  '
-            f'total={total_reward:.4f}'
+            f'shp_r={shaping_reward:.4f}  total={total_reward:.4f}'
         )
         return total_reward
 
